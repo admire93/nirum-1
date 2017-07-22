@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedLists, PartialTypeSignatures #-}
-module Nirum.Targets.JavaScriptSpec ( spec
+module Nirum.Targets.TypeScriptSpec ( spec
                                     ) where
 
 import qualified Data.Aeson.Types as A
@@ -17,7 +17,7 @@ import Nirum.CodeBuilder (runBuilder, writeLine)
 import qualified Nirum.Constructs.DeclarationSet as DS
 import Nirum.Constructs.Module (Module (..))
 -- import Nirum.Constructs.TypeDeclaration (Field (..))
-import Nirum.Targets.JavaScript
+import Nirum.Targets.TypeScript
 import Nirum.Package.Metadata ( Metadata (..)
                               , MetadataError ( FieldError )
                               , Package (..)
@@ -28,8 +28,8 @@ import qualified Nirum.Package.ModuleSet as MS
 emptyModule :: Module
 emptyModule = Module { types = DS.empty, docs = Nothing }
 
-js :: JavaScript
-js = JavaScript { packageName = "dummy" }
+ts :: TypeScript
+ts = TypeScript { packageName = "dummy" }
 
 modules' :: MS.ModuleSet
 modules' = case m of
@@ -42,10 +42,10 @@ modules' = case m of
                     , (["transports", "container"], emptyModule)
                     ]
 
-package :: Package JavaScript
+package :: Package TypeScript
 package = Package { metadata = Metadata { version = SV.version 0 0 1 [] []
                                         , authors = []
-                                        , target = js
+                                        , target = ts
                                         }
                   , modules = modules'
                   }
@@ -56,28 +56,28 @@ run = B.toLazyText . snd . runBuilder package ["fruits"] ()
 
 spec :: Spec
 spec = do
-    javaScriptTargetSpec
+    typeScriptTargetSpec
     compilationSpec
 
-javaScriptTargetSpec :: Spec
-javaScriptTargetSpec = describe "JavaScript target" $ do
-    describe "JavaScript type" $
+typeScriptTargetSpec :: Spec
+typeScriptTargetSpec = describe "TypeScript target" $ do
+    describe "TypeScript type" $
         it "should be converted to a JSON that holds the NPM package metadata" $
             toJSON package `shouldBe` object [ "name" .= A.String "dummy"
                                              , "version" .= A.String "0.0.1"
                                              ]
     describe "compilePackage'" $
-        it "should produce JavaScript files per corresponding module" $ do
+        it "should produce TypeScript files per corresponding module" $ do
             let m = compilePackage' package
             M.keysSet m `shouldBe` [ "package.json"
-                                   , "src" </> "fruits.js"
-                                   , "src" </> "imported_commons.js"
-                                   , "src" </> "transports" </> "truck.js"
-                                   , "src" </> "transports" </> "container.js"
+                                   , "src" </> "fruits.ts"
+                                   , "src" </> "imported_commons.ts"
+                                   , "src" </> "transports" </> "truck.ts"
+                                   , "src" </> "transports" </> "container.ts"
                                    ]
     describe "parseTarget" $
         it "should require \"name\" field" $
-            (parseTarget emptyTable :: Either MetadataError JavaScript) `shouldBe` Left (FieldError "name")
+            (parseTarget emptyTable :: Either MetadataError TypeScript) `shouldBe` Left (FieldError "name")
 
 compilationSpec :: Spec
 compilationSpec =

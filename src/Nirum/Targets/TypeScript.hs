@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances, OverloadedLists, RecordWildCards, TypeFamilies #-}
-module Nirum.Targets.JavaScript ( CodeBuilder
+module Nirum.Targets.TypeScript ( CodeBuilder
                                 , CompileError' (..)
-                                , JavaScript (..)
+                                , TypeScript (..)
                                 , compilePackage'
                                 , keywords
                                 , methodDefinition
@@ -56,41 +56,41 @@ import Nirum.Package.Metadata ( Metadata (..)
 import qualified Nirum.Package.ModuleSet as MS
 
 
-newtype JavaScript = JavaScript { packageName :: T.Text }
+newtype TypeScript = TypeScript { packageName :: T.Text }
     deriving (Eq, Ord, Show)
 
-instance ToJSON (Package JavaScript) where
+instance ToJSON (Package TypeScript) where
     toJSON package = object [ "name" .= packageName
                             , "version" .= SV.toText version
                             ]
       where
         Metadata {..} = metadata package
-        JavaScript {..} = packageTarget package
+        TypeScript {..} = packageTarget package
 
 newtype Code = Code { builder :: Builder }
 data CompileError' = CompileError'
 
-type CodeBuilder = CB.CodeBuilder JavaScript ()
+type CodeBuilder = CB.CodeBuilder TypeScript ()
 
-instance Target JavaScript where
-    type CompileResult JavaScript = Code
-    type CompileError JavaScript = CompileError'
-    targetName _ = "javascript"
+instance Target TypeScript where
+    type CompileResult TypeScript = Code
+    type CompileError TypeScript = CompileError'
+    targetName _ = "typescript"
     parseTarget table = do
         name' <- stringField "name" table
-        return JavaScript { packageName = name' }
+        return TypeScript { packageName = name' }
     compilePackage = compilePackage'
     showCompileError _ _e = ""
     toByteString _ = BSL.toStrict . encodeUtf8 . toLazyText . builder
 
-compilePackage' :: Package JavaScript -> Map FilePath (Either CompileError' Code)
+compilePackage' :: Package TypeScript -> Map FilePath (Either CompileError' Code)
 compilePackage' package =
     M.fromList $
         files ++
         [("package.json", Right $ compilePackageMetadata package)]
   where
-    toJavaScriptFilename :: ModulePath -> [FilePath]
-    toJavaScriptFilename mp =
+    toTypeScriptFilename :: ModulePath -> [FilePath]
+    toTypeScriptFilename mp =
       case mp of
         ModulePath { .. } ->
           [ T.unpack (toSnakeCaseText i)
@@ -100,10 +100,10 @@ compilePackage' package =
         ModuleName { .. } ->
           [ f moduleName ]
       where
-        f moduleName = T.unpack (toSnakeCaseText moduleName) ++ ".js"
+        f moduleName = T.unpack (toSnakeCaseText moduleName) ++ ".ts"
     toFilename :: T.Text -> ModulePath -> FilePath
     toFilename sourceRootDirectory mp =
-        joinPath $ T.unpack sourceRootDirectory : toJavaScriptFilename mp
+        joinPath $ T.unpack sourceRootDirectory : toTypeScriptFilename mp
     files :: [(FilePath, Either CompileError' Code)]
     files = [ (toFilename "src" mp, compile (mp, m))
             | (mp, m) <- MS.toList (modules package)
@@ -111,7 +111,7 @@ compilePackage' package =
     compile :: (ModulePath, Module) -> Either CompileError' Code
     compile (mp, m) = Right $ Code $ snd $ runBuilder package mp () (compileModule m)
 
-compilePackageMetadata :: Package JavaScript -> Code
+compilePackageMetadata :: Package TypeScript -> Code
 compilePackageMetadata = Code . (`mappend` LB.singleton '\n') . encodePrettyToTextBuilder
 
 
@@ -226,7 +226,7 @@ toDoc = P.text . T.unpack
 dot :: P.Doc -> P.Doc -> P.Doc
 a `dot` b = a <> P.char '.' <> b
 
--- | The set of JavaScript reserved keywords.
+-- | The set of TypeScript reserved keywords.
 -- See also: https://www.ecma-international.org/ecma-262/5.1/#sec-7.6.1.1
 keywords :: S.Set T.Text
 keywords = [ "break", "do", "instanceof", "typeof", "case", "else", "new"
