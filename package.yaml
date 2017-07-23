@@ -138,6 +138,7 @@ tests:
     dependencies:  # omit version specifiers for shared dependencies to library
     - hspec
     - hspec-core
+    - hspec-expectations
     - hspec-meta
     - hxt >=9.3.1.16 && <9.4.0.0
     - nirum

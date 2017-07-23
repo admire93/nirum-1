@@ -10,6 +10,7 @@ import qualified Data.Text.Lazy as L
 import qualified Data.Text.Lazy.Builder as B
 import System.FilePath ((</>))
 import Text.Toml.Types (emptyTable)
+import Test.Hspec.Expectations (Expectation)
 import Test.Hspec.Meta
 
 import Nirum.CodeBuilder (runBuilder, writeLine)
@@ -53,6 +54,9 @@ package = Package { metadata = Metadata { version = SV.version 0 0 1 [] []
 run :: CodeBuilder a -> L.Text
 run = B.toLazyText . snd . runBuilder package ["fruits"] ()
 
+shouldBeCompiled :: CodeBuilder a -> L.Text -> Expectation
+a `shouldBeCompiled` b = run a `shouldBe` b
+
 
 spec :: Spec
 spec = do
@@ -70,6 +74,7 @@ typeScriptTargetSpec = describe "TypeScript target" $ do
         it "should produce TypeScript files per corresponding module" $ do
             let m = compilePackage' package
             M.keysSet m `shouldBe` [ "package.json"
+                                   , "tsconfig.json"
                                    , "src" </> "fruits.ts"
                                    , "src" </> "imported_commons.ts"
                                    , "src" </> "transports" </> "truck.ts"
@@ -80,9 +85,44 @@ typeScriptTargetSpec = describe "TypeScript target" $ do
             (parseTarget emptyTable :: Either MetadataError TypeScript) `shouldBe` Left (FieldError "name")
 
 compilationSpec :: Spec
-compilationSpec =
-    specify "methodDefinition" $
-        run (methodDefinition "customer" "get-name" [] (writeLine "return this.name;")) `shouldBe`
-            "Customer.prototype.getName = function () {\n\
-            \    return this.name;\n\
-            \};\n"
+compilationSpec = do
+    compileRecordConstructorSpec
+    compileRecordSerializeSpec
+    specify "methodDefinition" $ do
+        methodDefinition "get-name" (Just TSNumber) [] (writeLine "return 42;") `shouldBeCompiled`
+            "getName(): number {\n\
+            \    return 42;\n\
+            \}\n"
+        methodDefinition "set-name" Nothing [param "wat" TSString] (writeLine "console.log(wat);") `shouldBeCompiled`
+            "setName(wat: string) {\n\
+            \    console.log(wat);\n\
+            \}\n"
+    specify "staticMethodDefinition" $
+        staticMethodDefinition "from-json" (Just $ TSNirum "package") [] (writeLine "return 42;") `shouldBeCompiled`
+            "static fromJson(): Package {\n\
+            \    return 42;\n\
+            \}\n"
+
+compileRecordConstructorSpec :: Spec
+compileRecordConstructorSpec = describe "compileRecordConstructor" $
+    specify "empty record" $
+        compileRecordConstructor [] `shouldBeCompiled`
+            L.unlines [ "constructor(value: any) {"
+                      , "    const errors = [];"
+                      , "    if (errors.length > 0) {"
+                      , "        throw new NirumError(errors);"
+                      , "    }"
+                      , "}"
+                      ]
+
+compileRecordSerializeSpec :: Spec
+compileRecordSerializeSpec = describe "compileRecordSerialize" $
+    specify "empty record" $
+        compileRecordSerialize "empty" [] `shouldBeCompiled`
+            L.unlines [ "serialize(): any {"
+                      , "    return {"
+                      , "        _type: 'empty'"
+                      , "    };"
+                      , "}"
+                      ]
+                      

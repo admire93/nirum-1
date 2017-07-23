@@ -1,10 +1,16 @@
 {-# LANGUAGE FlexibleInstances, OverloadedLists, RecordWildCards, TypeFamilies #-}
 module Nirum.Targets.TypeScript ( CodeBuilder
                                 , CompileError' (..)
+                                , FunctionParameter (..)
+                                , TSType (..)
                                 , TypeScript (..)
                                 , compilePackage'
+                                , compileRecordConstructor
+                                , compileRecordSerialize
                                 , keywords
                                 , methodDefinition
+                                , param
+                                , staticMethodDefinition
                                 ) where
 
 import Data.Aeson.Encode.Pretty (encodePrettyToTextBuilder)
@@ -87,7 +93,9 @@ compilePackage' :: Package TypeScript -> Map FilePath (Either CompileError' Code
 compilePackage' package =
     M.fromList $
         files ++
-        [("package.json", Right $ compilePackageMetadata package)]
+        [ ("package.json", Right $ compilePackageMetadata package)
+        , ("tsconfig.json", Right $ compileBuildConfiguration package)
+        ]
   where
     toTypeScriptFilename :: ModulePath -> [FilePath]
     toTypeScriptFilename mp =
@@ -114,6 +122,12 @@ compilePackage' package =
 compilePackageMetadata :: Package TypeScript -> Code
 compilePackageMetadata = Code . (`mappend` LB.singleton '\n') . encodePrettyToTextBuilder
 
+compileBuildConfiguration :: Package TypeScript -> Code
+compileBuildConfiguration _package = Code $ (`mappend` LB.singleton '\n') $ encodePrettyToTextBuilder content
+  where
+    content = object [ "compilerOptions" .= object []
+                     ]
+
 
 compileModule :: Module -> CodeBuilder ()
 compileModule Module {..} = do
@@ -125,27 +139,26 @@ compileModule Module {..} = do
 compileTypeDeclaration :: TypeDeclaration -> CodeBuilder ()
 compileTypeDeclaration td@TypeDeclaration { type' = RecordType fields } = do
     let name' = D.name td
-    compileRecordConstructor name' fields
+    compileRecordConstructor fields
     writeLine ""
     compileRecordSerialize name' fields
     writeLine ""
     compileRecordDeserialize name' fields
 compileTypeDeclaration _ = return ()
 
-compileRecordConstructor :: N.Name -> DS.DeclarationSet Field -> CodeBuilder ()
-compileRecordConstructor name fields = functionDefinition (toClassName name) [param] $ do
+compileRecordConstructor :: DS.DeclarationSet Field -> CodeBuilder ()
+compileRecordConstructor fields = methodDefinition "constructor" Nothing [param'] $ do
     let fields' = DS.toList fields
-    writeLine "var errors = [];"
+    writeLine "const errors = [];"
     mapM_ compileRecordTypeCheck fields'
     writeLine $ "if (errors.length > 0)" <+> P.lbrace
     nest 4 $ writeLine "throw new NirumError(errors);"
     writeLine P.rbrace
     mapM_ compileRecordInit fields'
-    writeLine "Object.freeze(this);"
   where
-    param = "values"
+    param' = param "value" TSAny
     values_ :: Field -> P.Doc
-    values_ = dot (P.text $ T.unpack $ toCamelCaseText param) . toAttributeName . N.facialName . fieldName
+    values_ = dot (toAttributeName $ paramName param') . toFieldName
     compileRecordTypeCheck :: Field -> CodeBuilder ()
     compileRecordTypeCheck field = do
         -- ty <- lookupType $ fieldType field
@@ -157,7 +170,7 @@ compileRecordConstructor name fields = functionDefinition (toClassName name) [pa
         writeLine $ "this" `dot` toAttributeName (N.facialName $ fieldName field) <+> P.equals <+> values_ field <> P.semi
 
 compileRecordSerialize :: N.Name -> DS.DeclarationSet Field -> CodeBuilder ()
-compileRecordSerialize name fields = methodDefinition name "serialize" [] $ do
+compileRecordSerialize name fields = methodDefinition "serialize" (Just TSAny) [] $ do
     writeLine $ "return" <+> P.lbrace
     nest 4 $ do
         writeLine $ "_type" <> P.colon <+> P.quotes (toDoc $ toSnakeCaseText $ N.behindName name)
@@ -168,48 +181,57 @@ compileRecordSerialize name fields = methodDefinition name "serialize" [] $ do
     field f = writeLine $ P.quotes (toFieldName f) <> P.colon <+> "this" `dot` toFieldName f <> P.comma
 
 compileRecordDeserialize :: N.Name -> DS.DeclarationSet Field -> CodeBuilder ()
-compileRecordDeserialize name _fields = staticMethodDefinition name "deserialize" [] $
-    writeLine $ "return" <+> "new" <+> toClassName name <> P.parens P.empty <> P.semi
+compileRecordDeserialize name _fields = staticMethodDefinition "deserialize" (Just $ TSNirum name) [] $
+    writeLine $ "return" <+> "new" <+> toClassName (N.facialName name) <> P.parens P.empty <> P.semi
+
+data FunctionParameter = FunctionParameter { paramType :: TSType
+                                           , paramName :: Identifier
+                                           }
+
+param :: Identifier -> TSType -> FunctionParameter
+param = flip FunctionParameter
 
 functionDefinition'
     :: P.Doc  -- prefix
     -> P.Doc  -- end
     -> P.Doc  -- function name
-    -> [Identifier]  -- parameters
+    -> Maybe TSType  -- return type
+    -> [FunctionParameter]  -- parameters
     -> CodeBuilder ()  -- function body
     -> CodeBuilder ()
-functionDefinition' prefix end name params body = do
-    writeLine $ prefix <+> name <> P.parens params' <+> P.lbrace
+functionDefinition' prefix end name ret params body = do
+    writeLine $ prefix <+> name <> P.parens params' <> returns' ret <+> P.lbrace
     nest 4 body
     writeLine $ P.rbrace <> end
   where
-    toParamName :: Identifier -> Doc
-    toParamName = toAttributeName
     params' :: Doc
-    params' = P.sep $ P.punctuate P.comma $ map toParamName params
+    params' = P.sep $ P.punctuate P.comma $ map toDoc params
+    returns' :: Maybe TSType -> Doc
+    returns' (Just r) = P.colon <+> toDoc r
+    returns' Nothing = P.empty
 
-functionDefinition :: P.Doc -> [Identifier] -> CodeBuilder () -> CodeBuilder ()
-functionDefinition = functionDefinition' "function" P.empty
+-- functionDefinition :: P.Doc -> Maybe TSType -> [FunctionParameter] -> CodeBuilder () -> CodeBuilder ()
+-- functionDefinition = functionDefinition' "function" P.empty
 
 methodDefinition
-    :: N.Name  -- class name
-    -> Identifier  -- method name
-    -> [Identifier]  -- parameters
+    :: Identifier  -- method name
+    -> Maybe TSType  -- return type
+    -> [FunctionParameter]  -- parameters
     -> CodeBuilder ()  -- method body
     -> CodeBuilder ()
-methodDefinition className name = functionDefinition' prefix P.semi (P.text "")
+methodDefinition name = functionDefinition' P.empty P.empty name'
   where
-    prefix = toClassName className `dot` "prototype" `dot` toAttributeName name <+> P.equals <+> "function"
+    name' = toAttributeName name
 
 staticMethodDefinition
-    :: N.Name  -- class name
-    -> Identifier  -- method name
-    -> [Identifier]  -- parameters
+    :: Identifier  -- method name
+    -> Maybe TSType  -- return type
+    -> [FunctionParameter]  -- parameters
     -> CodeBuilder ()  -- method body
     -> CodeBuilder ()
-staticMethodDefinition className name = functionDefinition' prefix P.semi (P.text "")
+staticMethodDefinition name = functionDefinition' (P.text "static") P.empty name'
   where
-    prefix = toClassName className `dot` toAttributeName name <+> P.equals <+> "function"
+    name' = toAttributeName name
 
 toAttributeName :: Identifier -> Doc
 toAttributeName = toDoc . toCamelCaseText
@@ -217,14 +239,40 @@ toAttributeName = toDoc . toCamelCaseText
 toFieldName :: Field -> Doc
 toFieldName = toAttributeName . N.facialName . fieldName
 
-toClassName :: N.Name -> Doc
-toClassName = toDoc . toPascalCaseText . N.facialName
-
-toDoc :: T.Text -> Doc
-toDoc = P.text . T.unpack
+toClassName :: Identifier -> Doc
+toClassName = toDoc . toPascalCaseText
 
 dot :: P.Doc -> P.Doc -> P.Doc
 a `dot` b = a <> P.char '.' <> b
+
+data TSType = TSAny
+            | TSUndefined
+            | TSNull
+            | TSNumber
+            | TSString
+            | TSArray TSType
+            | TSNirum N.Name
+
+class ToDoc a where
+    toDoc :: a -> Doc
+
+instance ToDoc P.Doc where
+    toDoc = id
+
+instance ToDoc T.Text where
+    toDoc = P.text . T.unpack
+
+instance ToDoc TSType where
+    toDoc TSAny = "any"
+    toDoc TSUndefined = "undefined"
+    toDoc TSNull = "null"
+    toDoc TSNumber = "number"
+    toDoc TSString = "string"
+    toDoc (TSArray e) = P.brackets $ toDoc e
+    toDoc (TSNirum n) = toClassName $ N.facialName n
+
+instance ToDoc FunctionParameter where
+    toDoc (FunctionParameter ty n) = toAttributeName n <> P.colon <+> toDoc ty
 
 -- | The set of TypeScript reserved keywords.
 -- See also: https://www.ecma-international.org/ecma-262/5.1/#sec-7.6.1.1
