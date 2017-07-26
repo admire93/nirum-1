@@ -1,11 +1,13 @@
-{-# LANGUAGE FlexibleInstances, OverloadedLists, RecordWildCards, TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances, NamedFieldPuns, OverloadedLists, RecordWildCards, TypeFamilies #-}
 module Nirum.Targets.TypeScript ( CodeBuilder
                                 , CompileError' (..)
                                 , FunctionParameter (..)
                                 , TSType (..)
                                 , TypeScript (..)
                                 , compilePackage'
+                                , compileRecord
                                 , compileRecordConstructor
+                                , compileRecordDeserialize
                                 , compileRecordSerialize
                                 , keywords
                                 , methodDefinition
@@ -137,37 +139,51 @@ compileModule Module {..} = do
     compileTypeDecl tds = writeLine "" >> compileTypeDeclaration tds
 
 compileTypeDeclaration :: TypeDeclaration -> CodeBuilder ()
-compileTypeDeclaration td@TypeDeclaration { type' = RecordType fields } = do
-    let name' = D.name td
-    compileRecordConstructor fields
-    writeLine ""
-    compileRecordSerialize name' fields
-    writeLine ""
-    compileRecordDeserialize name' fields
+compileTypeDeclaration td@TypeDeclaration { type' = RecordType fields } = compileRecord (D.name td) fields
 compileTypeDeclaration _ = return ()
 
+compileRecord :: N.Name -> DS.DeclarationSet Field -> CodeBuilder ()
+compileRecord name' fields = do
+    writeLine $ "export" <+> "class" <+> toClassName (N.facialName name') <+> P.lbrace
+    nest 4 $ do
+        compileRecordConstructor fields
+        writeLine ""
+        compileRecordSerialize name' fields
+        writeLine ""
+        compileRecordDeserialize name' fields
+    writeLine P.rbrace
+
 compileRecordConstructor :: DS.DeclarationSet Field -> CodeBuilder ()
-compileRecordConstructor fields = methodDefinition "constructor" Nothing [param'] $ do
-    let fields' = DS.toList fields
+compileRecordConstructor fields = methodDefinition "constructor" Nothing params' $
+    mapM_ compileRecordInit fieldList
+  where
+    fieldList = DS.toList fields
+    params' = [ param (N.facialName fieldName) (tsType fieldType) | Field { fieldName, fieldType } <- fieldList ]
+    tsType _ = TSAny
+    compileRecordInit :: Field -> CodeBuilder ()
+    compileRecordInit field =
+        writeLine $ "this" `dot` toAttributeName (N.facialName $ fieldName field) <+> P.equals <+> toFieldName field <> P.semi
+
+compileRecordDeserialize :: N.Name -> DS.DeclarationSet Field -> CodeBuilder ()
+compileRecordDeserialize name fields = staticMethodDefinition "deserialize" (Just $ TSNirum name) params' $ do
     writeLine "const errors = [];"
-    mapM_ compileRecordTypeCheck fields'
+    mapM_ compileRecordTypeCheck fieldList
     writeLine $ "if (errors.length > 0)" <+> P.lbrace
     nest 4 $ writeLine "throw new NirumError(errors);"
     writeLine P.rbrace
-    mapM_ compileRecordInit fields'
+    writeLine $ "return" <+> "new" <+> toClassName (N.facialName name) <> P.parens P.empty <> P.semi
   where
-    param' = param "value" TSAny
+    fieldList = DS.toList fields
+    value' = "value"
+    params' = [param value' TSAny]
     values_ :: Field -> P.Doc
-    values_ = dot (toAttributeName $ paramName param') . toFieldName
+    values_ = dot (toAttributeName value') . toFieldName
     compileRecordTypeCheck :: Field -> CodeBuilder ()
     compileRecordTypeCheck field = do
         -- ty <- lookupType $ fieldType field
         writeLine $ "if" <+> P.parens (values_ field) <+> P.lbrace
         nest 4 $ writeLine $ "errors.push" <> P.parens P.empty <> P.semi
         writeLine P.rbrace
-    compileRecordInit :: Field -> CodeBuilder ()
-    compileRecordInit field =
-        writeLine $ "this" `dot` toAttributeName (N.facialName $ fieldName field) <+> P.equals <+> values_ field <> P.semi
 
 compileRecordSerialize :: N.Name -> DS.DeclarationSet Field -> CodeBuilder ()
 compileRecordSerialize name fields = methodDefinition "serialize" (Just TSAny) [] $ do
@@ -179,10 +195,6 @@ compileRecordSerialize name fields = methodDefinition "serialize" (Just TSAny) [
   where
     field :: Field -> CodeBuilder ()
     field f = writeLine $ P.quotes (toFieldName f) <> P.colon <+> "this" `dot` toFieldName f <> P.comma
-
-compileRecordDeserialize :: N.Name -> DS.DeclarationSet Field -> CodeBuilder ()
-compileRecordDeserialize name _fields = staticMethodDefinition "deserialize" (Just $ TSNirum name) [] $
-    writeLine $ "return" <+> "new" <+> toClassName (N.facialName name) <> P.parens P.empty <> P.semi
 
 data FunctionParameter = FunctionParameter { paramType :: TSType
                                            , paramName :: Identifier

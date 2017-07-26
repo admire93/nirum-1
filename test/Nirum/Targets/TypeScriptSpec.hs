@@ -87,7 +87,9 @@ typeScriptTargetSpec = describe "TypeScript target" $ do
 compilationSpec :: Spec
 compilationSpec = do
     compileRecordConstructorSpec
+    compileRecordDeserializeSpec
     compileRecordSerializeSpec
+    compileRecordSpec
     specify "methodDefinition" $ do
         methodDefinition "get-name" (Just TSNumber) [] (writeLine "return 42;") `shouldBeCompiled`
             [ "getName(): number {"
@@ -110,11 +112,7 @@ compileRecordConstructorSpec :: Spec
 compileRecordConstructorSpec = describe "compileRecordConstructor" $
     specify "empty record" $
         compileRecordConstructor [] `shouldBeCompiled`
-            [ "constructor(value: any) {"
-            , "    const errors = [];"
-            , "    if (errors.length > 0) {"
-            , "        throw new NirumError(errors);"
-            , "    }"
+            [ "constructor() {"
             , "}"
             ]
 
@@ -128,4 +126,23 @@ compileRecordSerializeSpec = describe "compileRecordSerialize" $
             , "    };"
             , "}"
             ]
-                      
+
+compileRecordDeserializeSpec :: Spec
+compileRecordDeserializeSpec = describe "compileRecordDeserializeSpec" $
+    specify "empty record" $
+        compileRecordDeserialize "empty" [] `shouldBeCompiled`
+            [ "static deserialize(value: any): Empty {"
+            , "    const errors = [];"
+            , "    if (errors.length > 0) {"
+            , "        throw new NirumError(errors);"
+            , "    }"
+            , "    return new Empty();"
+            , "}"
+            ]
+
+compileRecordSpec :: Spec
+compileRecordSpec = describe "compileRecord" $
+    specify "empty record" $ do
+        let compiled = L.lines $ run $ compileRecord "empty" []
+        head compiled `shouldBe` "export class Empty {"
+        last compiled `shouldBe` "}"
