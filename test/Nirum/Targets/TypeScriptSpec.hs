@@ -54,8 +54,8 @@ package = Package { metadata = Metadata { version = SV.version 0 0 1 [] []
 run :: CodeBuilder a -> L.Text
 run = B.toLazyText . snd . runBuilder package ["fruits"] ()
 
-shouldBeCompiled :: CodeBuilder a -> L.Text -> Expectation
-a `shouldBeCompiled` b = run a `shouldBe` b
+shouldBeCompiled :: CodeBuilder a -> [L.Text] -> Expectation
+a `shouldBeCompiled` b = run a `shouldBe` L.unlines b
 
 
 spec :: Spec
@@ -90,39 +90,42 @@ compilationSpec = do
     compileRecordSerializeSpec
     specify "methodDefinition" $ do
         methodDefinition "get-name" (Just TSNumber) [] (writeLine "return 42;") `shouldBeCompiled`
-            "getName(): number {\n\
-            \    return 42;\n\
-            \}\n"
+            [ "getName(): number {"
+            , "    return 42;"
+            , "}"
+            ]
         methodDefinition "set-name" Nothing [param "wat" TSString] (writeLine "console.log(wat);") `shouldBeCompiled`
-            "setName(wat: string) {\n\
-            \    console.log(wat);\n\
-            \}\n"
+            [ "setName(wat: string) {"
+            , "    console.log(wat);"
+            , "}"
+            ]
     specify "staticMethodDefinition" $
         staticMethodDefinition "from-json" (Just $ TSNirum "package") [] (writeLine "return 42;") `shouldBeCompiled`
-            "static fromJson(): Package {\n\
-            \    return 42;\n\
-            \}\n"
+            [ "static fromJson(): Package {"
+            , "    return 42;"
+            , "}"
+            ]
 
 compileRecordConstructorSpec :: Spec
 compileRecordConstructorSpec = describe "compileRecordConstructor" $
     specify "empty record" $
         compileRecordConstructor [] `shouldBeCompiled`
-            L.unlines [ "constructor(value: any) {"
-                      , "    const errors = [];"
-                      , "    if (errors.length > 0) {"
-                      , "        throw new NirumError(errors);"
-                      , "    }"
-                      , "}"
-                      ]
+            [ "constructor(value: any) {"
+            , "    const errors = [];"
+            , "    if (errors.length > 0) {"
+            , "        throw new NirumError(errors);"
+            , "    }"
+            , "}"
+            ]
 
 compileRecordSerializeSpec :: Spec
 compileRecordSerializeSpec = describe "compileRecordSerialize" $
     specify "empty record" $
         compileRecordSerialize "empty" [] `shouldBeCompiled`
-            L.unlines [ "serialize(): any {"
-                      , "    return {"
-                      , "        _type: 'empty'"
-                      , "    };"
-                      , "}"
-                      ]
+            [ "serialize(): any {"
+            , "    return {"
+            , "        _type: 'empty'"
+            , "    };"
+            , "}"
+            ]
                       
