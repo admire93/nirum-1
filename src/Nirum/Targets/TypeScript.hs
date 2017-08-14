@@ -146,12 +146,21 @@ compileRecord :: N.Name -> DS.DeclarationSet Field -> CodeBuilder ()
 compileRecord name' fields = do
     writeLine $ "export" <+> "class" <+> toClassName (N.facialName name') <+> P.lbrace
     nest 4 $ do
+        compileRecordFields fields
+        writeLine ""
         compileRecordConstructor fields
         writeLine ""
         compileRecordSerialize name' fields
         writeLine ""
         compileRecordDeserialize name' fields
     writeLine P.rbrace
+
+compileRecordFields :: DS.DeclarationSet Field -> CodeBuilder ()
+compileRecordFields = mapM_ decl . DS.toList
+  where
+    decl :: Field -> CodeBuilder ()
+    decl field =
+        writeLine $ toAttributeName (N.facialName $ fieldName field) <> P.colon <+> toDoc TSAny <> P.semi
 
 compileRecordConstructor :: DS.DeclarationSet Field -> CodeBuilder ()
 compileRecordConstructor fields = methodDefinition "constructor" Nothing params' $
