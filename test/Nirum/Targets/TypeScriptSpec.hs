@@ -21,6 +21,7 @@ import Nirum.Constructs.Module (Module (..))
 import Nirum.Package.Metadata ( Metadata (..)
                               , MetadataError ( FieldError )
                               , Package (..)
+                              , Target ( compilePackage )
                               , parseTarget )
 import qualified Nirum.Package.ModuleSet as MS
 import Nirum.Targets.TypeScript
@@ -72,9 +73,9 @@ typeScriptTargetSpec = describe "TypeScript target" $ do
             toJSON package `shouldBe` object [ "name" .= A.String "dummy"
                                              , "version" .= A.String "0.0.1"
                                              ]
-    describe "compilePackage'" $
+    describe "compilePackage" $
         it "should produce TypeScript files per corresponding module" $ do
-            let m = compilePackage' package
+            let m = compilePackage package
             M.keysSet m `shouldBe` [ "package.json"
                                    , "tsconfig.json"
                                    , "src" </> "fruits.ts"

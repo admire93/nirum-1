@@ -3,7 +3,6 @@ module Nirum.Targets.TypeScript ( Code ( .. )
                                 , CodeBuilder
                                 , CompileError' (..)
                                 , TypeScript (..)
-                                , compilePackage'
                                 ) where
 
 import Data.Aeson.Encode.Pretty (encodePrettyToTextBuilder)
