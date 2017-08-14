@@ -122,7 +122,7 @@ compileRecordSerializeSpec = describe "compileRecordSerialize" $
         compileRecordSerialize "empty" [] `shouldBeCompiled`
             [ "serialize(): any {"
             , "    return {"
-            , "        _type: 'empty'"
+            , "        _type: 'empty',"
             , "    };"
             , "}"
             ]

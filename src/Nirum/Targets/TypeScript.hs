@@ -180,25 +180,27 @@ compileRecordDeserialize name fields = staticMethodDefinition "deserialize" (Jus
     writeLine $ "if (errors.length > 0)" <+> P.lbrace
     nest 4 $ writeLine "throw new NirumError(errors);"
     writeLine P.rbrace
-    writeLine $ "return" <+> "new" <+> toClassName (N.facialName name) <> P.parens P.empty <> P.semi
+    writeLine $ "return" <+> "new" <+> toClassName (N.facialName name) <> P.parens args' <> P.semi
   where
     fieldList = DS.toList fields
     value' = "value"
     params' = [param value' TSAny]
+    args' = list P.comma $ map toFieldName fieldList
     values_ :: Field -> P.Doc
     values_ = dot (toAttributeName value') . toFieldName
     compileRecordTypeCheck :: Field -> CodeBuilder ()
     compileRecordTypeCheck field = do
         -- ty <- lookupType $ fieldType field
-        writeLine $ "if" <+> P.parens (values_ field) <+> P.lbrace
+        writeLine $ "if" <+> P.parens (P.char '!' <> values_ field) <+> P.lbrace
         nest 4 $ writeLine $ "errors.push" <> P.parens P.empty <> P.semi
         writeLine P.rbrace
+        writeLine $ "const" <+> toFieldName field <> P.colon <+> toDoc TSAny <+> P.equals <+> values_ field <> P.semi
 
 compileRecordSerialize :: N.Name -> DS.DeclarationSet Field -> CodeBuilder ()
 compileRecordSerialize name fields = methodDefinition "serialize" (Just TSAny) [] $ do
     writeLine $ "return" <+> P.lbrace
     nest 4 $ do
-        writeLine $ "_type" <> P.colon <+> P.quotes (toDoc $ toSnakeCaseText $ N.behindName name)
+        writeLine $ "_type" <> P.colon <+> P.quotes (toDoc $ toSnakeCaseText $ N.behindName name) <> P.comma
         mapM_ field $ DS.toList fields
     writeLine $ P.rbrace <> P.semi
   where
@@ -225,11 +227,13 @@ functionDefinition' prefix end name ret params body = do
     nest 4 body
     writeLine $ P.rbrace <> end
   where
-    params' :: Doc
-    params' = P.sep $ P.punctuate P.comma $ map toDoc params
+    params' = list P.comma params
     returns' :: Maybe TSType -> Doc
     returns' (Just r) = P.colon <+> toDoc r
     returns' Nothing = P.empty
+
+list :: (ToDoc a) => P.Doc -> [a] -> P.Doc
+list sep = P.sep . P.punctuate sep . map toDoc
 
 -- functionDefinition :: P.Doc -> Maybe TSType -> [FunctionParameter] -> CodeBuilder () -> CodeBuilder ()
 -- functionDefinition = functionDefinition' "function" P.empty
