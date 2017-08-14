@@ -18,12 +18,14 @@ import Nirum.CodeBuilder (runBuilder, writeLine)
 import qualified Nirum.Constructs.DeclarationSet as DS
 import Nirum.Constructs.Module (Module (..))
 -- import Nirum.Constructs.TypeDeclaration (Field (..))
-import Nirum.Targets.TypeScript
 import Nirum.Package.Metadata ( Metadata (..)
                               , MetadataError ( FieldError )
                               , Package (..)
                               , parseTarget )
 import qualified Nirum.Package.ModuleSet as MS
+import Nirum.Targets.TypeScript
+import Nirum.Targets.TypeScript.Record
+import Nirum.Targets.TypeScript.Util
 
 
 emptyModule :: Module
