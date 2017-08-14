@@ -1,0 +1,12 @@
+{
+    "name": "nirum-test-typescript",
+    "private": true,
+    "devDependencies": {
+        "@types/tape": "^4.2.30",
+        "typescript": "^2.4.2"
+    },
+    "dependencies": {
+        "tape": "^4.8.0",
+        "tape-async": "^2.3.0"
+    }
+}
