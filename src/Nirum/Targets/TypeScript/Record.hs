@@ -11,8 +11,6 @@ import Text.PrettyPrint (Doc, (<>), (<+>))
 import qualified Nirum.CodeBuilder as CB
 import Nirum.CodeBuilder (nest, writeLine)
 import qualified Nirum.Constructs.DeclarationSet as DS
-import Nirum.Constructs.Identifier ( toSnakeCaseText
-                                   )
 import qualified Nirum.Constructs.Name as N
 import Nirum.Constructs.TypeDeclaration ( Field (..)
                                         )
@@ -29,6 +27,7 @@ import Nirum.Targets.TypeScript.Util ( ToDoc ( .. )
                                      , toClassName
                                      , toFieldName
                                      )
+import qualified Nirum.Targets.TypeScript.Util as U
 
 
 compileRecord :: (Target t) => N.Name -> DS.DeclarationSet Field -> CB.CodeBuilder t s ()
@@ -64,12 +63,12 @@ compileRecordConstructor fields = methodDefinition "constructor" Nothing params'
 
 compileRecordDeserialize :: (Target t) => N.Name -> DS.DeclarationSet Field -> CB.CodeBuilder t s ()
 compileRecordDeserialize name fields = staticMethodDefinition "deserialize" (Just $ TSNirum name) params' $ do
-    writeLine "const errors = [];"
+    U.if' ("typeof" <+> toAttributeName value' <+> "!==" <+> P.doubleQuotes "object") $
+        U.throw (P.text "DeserializeError") ([] :: [Doc])
     mapM_ compileRecordTypeCheck fieldList
-    writeLine $ "if (errors.length > 0)" <+> P.lbrace
-    nest 4 $ writeLine "throw new NirumError(errors);"
-    writeLine P.rbrace
-    writeLine $ "return" <+> "new" <+> toClassName (N.facialName name) <> P.parens args' <> P.semi
+    U.if' (dot (toAttributeName value') "_type" <+> U.ne <+> P.doubleQuotes (U.toBehindTypeName name)) $
+        U.throw (P.text "DeserializeError") ([] :: [Doc])
+    U.return' $ "new" <+> toClassName (N.facialName name) <> P.parens args'
   where
     fieldList = DS.toList fields
     value' = "value"
@@ -89,7 +88,7 @@ compileRecordSerialize :: (Target t) => N.Name -> DS.DeclarationSet Field -> CB.
 compileRecordSerialize name fields = methodDefinition "serialize" (Just TSAny) [] $ do
     writeLine $ "return" <+> P.lbrace
     nest 4 $ do
-        writeLine $ "_type" <> P.colon <+> P.quotes (toDoc $ toSnakeCaseText $ N.behindName name) <> P.comma
+        writeLine $ "_type" <> P.colon <+> P.quotes (U.toBehindTypeName name) <> P.comma
         mapM_ field $ DS.toList fields
     writeLine $ P.rbrace <> P.semi
   where

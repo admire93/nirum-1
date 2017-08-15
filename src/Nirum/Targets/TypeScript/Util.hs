@@ -3,13 +3,19 @@ module Nirum.Targets.TypeScript.Util ( FunctionParameter ( .. )
                                      , ToDoc ( .. )
                                      , TSType ( .. )
                                      , dot
+                                     , eq
                                      , functionDefinition'
+                                     , if'
                                      , keywords
                                      , list
                                      , methodDefinition
+                                     , ne
                                      , param
+                                     , return'
                                      , staticMethodDefinition
+                                     , throw
                                      , toAttributeName
+                                     , toBehindTypeName
                                      , toClassName
                                      , toFieldName
                                      ) where
@@ -24,10 +30,26 @@ import qualified Nirum.Constructs.Name as N
 import Nirum.Constructs.Identifier ( Identifier
                                    , toCamelCaseText
                                    , toPascalCaseText
+                                   , toSnakeCaseText
                                    )
 import Nirum.Constructs.TypeDeclaration ( Field (..) )
 import Nirum.Package.Metadata ( Target )
 
+
+eq :: Doc
+eq = "==="
+
+ne :: Doc
+ne = "!=="
+
+if' :: (Target t) => Doc -> CB.CodeBuilder t s () -> CB.CodeBuilder t s ()
+if' cond body = do
+    writeLine $ "if" <+> P.parens cond <+> P.lbrace
+    nest 4 body
+    writeLine P.rbrace
+
+return' :: (Target t) => Doc -> CB.CodeBuilder t s ()
+return' value = writeLine $ "return" <+> value <> P.semi
 
 data FunctionParameter = FunctionParameter { paramType :: TSType
                                            , paramName :: Identifier
@@ -83,6 +105,9 @@ staticMethodDefinition name = functionDefinition' (P.text "static") P.empty name
   where
     name' = toAttributeName name
 
+throw :: (Target t, ToDoc a, ToDoc b) => a -> [b] -> CB.CodeBuilder t s ()
+throw name args = writeLine $ "throw" <+> "new" <+> toDoc name <> P.parens (list P.comma args) <> P.semi
+
 toAttributeName :: Identifier -> Doc
 toAttributeName = toDoc . toCamelCaseText
 
@@ -91,6 +116,9 @@ toFieldName = toAttributeName . N.facialName . fieldName
 
 toClassName :: Identifier -> Doc
 toClassName = toDoc . toPascalCaseText
+
+toBehindTypeName :: N.Name -> Doc
+toBehindTypeName = toDoc . toSnakeCaseText . N.behindName
 
 dot :: P.Doc -> P.Doc -> P.Doc
 a `dot` b = a <> P.char '.' <> b

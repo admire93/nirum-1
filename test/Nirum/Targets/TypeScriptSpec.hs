@@ -135,9 +135,11 @@ compileRecordDeserializeSpec = describe "compileRecordDeserializeSpec" $
     specify "empty record" $
         compileRecordDeserialize "empty" [] `shouldBeCompiled`
             [ "static deserialize(value: any): Empty {"
-            , "    const errors = [];"
-            , "    if (errors.length > 0) {"
-            , "        throw new NirumError(errors);"
+            , "    if (typeof value !== \"object\") {"
+            , "        throw new DeserializeError();"
+            , "    }"
+            , "    if (value._type !== \"empty\") {"
+            , "        throw new DeserializeError();"  -- warning?
             , "    }"
             , "    return new Empty();"
             , "}"
