@@ -13,6 +13,7 @@ module Nirum.Targets.TypeScript.Util ( FunctionParameter ( .. )
                                      , param
                                      , return'
                                      , staticMethodDefinition
+                                     , thisDot
                                      , throw
                                      , toAttributeName
                                      , toBehindTypeName
@@ -34,6 +35,7 @@ import Nirum.Constructs.Identifier ( Identifier
                                    )
 import Nirum.Constructs.TypeDeclaration ( Field (..) )
 import Nirum.Package.Metadata ( Target )
+import Nirum.Targets.TypeScript.Context ( CodeBuilder )
 
 
 eq :: Doc
@@ -42,7 +44,7 @@ eq = "==="
 ne :: Doc
 ne = "!=="
 
-if' :: (Target t) => Doc -> CB.CodeBuilder t s () -> CB.CodeBuilder t s ()
+if' :: (Target t) => Doc -> CodeBuilder t () -> CodeBuilder t ()
 if' cond body = do
     writeLine $ "if" <+> P.parens cond <+> P.lbrace
     nest 4 body
@@ -122,6 +124,9 @@ toBehindTypeName = toDoc . toSnakeCaseText . N.behindName
 
 dot :: P.Doc -> P.Doc -> P.Doc
 a `dot` b = a <> P.char '.' <> b
+
+thisDot :: Doc -> Doc
+thisDot a = "this" `dot` a
 
 data TSType = TSAny
             | TSUndefined

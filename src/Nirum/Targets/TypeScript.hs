@@ -16,11 +16,10 @@ import qualified Data.Text.Lazy.Builder as LB
 import Data.Text.Lazy.Builder (Builder, toLazyText)
 import Data.Text.Lazy.Encoding (encodeUtf8)
 import GHC.Exts (IsList (toList))
-import System.FilePath (joinPath)
+import System.FilePath (joinPath, (</>))
 import qualified Text.PrettyPrint as P
 import Text.PrettyPrint ( (<>) )
 
-import qualified Nirum.CodeBuilder as CB
 import Nirum.CodeBuilder (runBuilder, writeLine)
 import qualified Nirum.Constructs.Declaration as D
 import qualified Nirum.Constructs.DeclarationSet as DS
@@ -45,7 +44,9 @@ import Nirum.Package.Metadata ( Metadata (..)
                               , stringField
                               )
 import qualified Nirum.Package.ModuleSet as MS
+import qualified Nirum.Targets.TypeScript.Context as C
 import Nirum.Targets.TypeScript.Record ( compileRecord )
+import Nirum.Targets.TypeScript.Runtime ( runtimeModuleContent )
 
 
 newtype TypeScript = TypeScript { packageName :: T.Text }
@@ -54,7 +55,7 @@ newtype TypeScript = TypeScript { packageName :: T.Text }
 newtype Code = Code { builder :: Builder }
 data CompileError' = CompileError'
 
-type CodeBuilder = CB.CodeBuilder TypeScript ()
+type CodeBuilder = C.CodeBuilder TypeScript
 
 instance ToJSON (Package TypeScript) where
     toJSON package = object [ "name" .= packageName
@@ -82,6 +83,7 @@ compilePackage' package =
         files ++
         [ ("package.json", Right $ compilePackageMetadata package)
         , ("tsconfig.json", Right $ compileBuildConfiguration package)
+        , ("src" </> "__rt.ts", Right runtimeModule)
         ]
   where
     toTypeScriptFilename :: ModulePath -> [FilePath]
@@ -104,7 +106,7 @@ compilePackage' package =
             | (mp, m) <- MS.toList (modules package)
             ]
     compile :: (ModulePath, Module) -> Either CompileError' Code
-    compile (mp, m) = Right $ Code $ snd $ runBuilder package mp () (compileModule m)
+    compile (mp, m) = Right $ Code $ snd $ runBuilder package mp C.empty (compileModule m)
 
 compilePackageMetadata :: Package TypeScript -> Code
 compilePackageMetadata = Code . (`mappend` LB.singleton '\n') . encodePrettyToTextBuilder
@@ -115,14 +117,16 @@ compileBuildConfiguration _package = Code $ (`mappend` LB.singleton '\n') $ enco
     content = object [ "compilerOptions" .= object []
                      ]
 
+runtimeModule :: Code
+runtimeModule = Code runtimeModuleContent
 
-compileModule :: (Target t) => Module -> CB.CodeBuilder t s ()
+compileModule :: (Target t) => Module -> C.CodeBuilder t ()
 compileModule Module {..} = do
     writeLine $ P.doubleQuotes "use strict" <> P.semi
     mapM_ compileTypeDecl $ DS.toList types
   where
     compileTypeDecl tds = writeLine "" >> compileTypeDeclaration tds
 
-compileTypeDeclaration :: (Target t) => TypeDeclaration -> CB.CodeBuilder t s ()
+compileTypeDeclaration :: (Target t) => TypeDeclaration -> C.CodeBuilder t ()
 compileTypeDeclaration td@TypeDeclaration { type' = RecordType fields } = compileRecord (D.name td) fields
 compileTypeDeclaration _ = return ()

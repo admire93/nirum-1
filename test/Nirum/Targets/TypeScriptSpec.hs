@@ -1,7 +1,8 @@
-{-# LANGUAGE OverloadedLists, PartialTypeSignatures #-}
+{-# LANGUAGE NamedFieldPuns, OverloadedLists, PartialTypeSignatures #-}
 module Nirum.Targets.TypeScriptSpec ( spec
                                     ) where
 
+import qualified Control.Monad.State as ST
 import qualified Data.Aeson.Types as A
 import Data.Aeson.Types ( (.=), object, toJSON )
 import qualified Data.Map.Strict as M
@@ -13,7 +14,8 @@ import Text.Toml.Types (emptyTable)
 import Test.Hspec.Expectations (Expectation)
 import Test.Hspec.Meta
 
-import Nirum.CodeBuilder (runBuilder, writeLine)
+import qualified Nirum.CodeBuilder as CB
+import Nirum.CodeBuilder (writeLine)
 -- import Nirum.Constructs.Annotation as AS (empty)
 import qualified Nirum.Constructs.DeclarationSet as DS
 import Nirum.Constructs.Module (Module (..))
@@ -25,6 +27,7 @@ import Nirum.Package.Metadata ( Metadata (..)
                               , parseTarget )
 import qualified Nirum.Package.ModuleSet as MS
 import Nirum.Targets.TypeScript
+import qualified Nirum.Targets.TypeScript.Context as C
 import Nirum.Targets.TypeScript.Record
 import Nirum.Targets.TypeScript.Util
 
@@ -54,8 +57,13 @@ package = Package { metadata = Metadata { version = SV.version 0 0 1 [] []
                   , modules = modules'
                   }
 
+runBuilder :: CodeBuilder a -> (a, L.Text)
+runBuilder = f' . CB.runBuilder package ["fruits"] C.empty
+  where
+    f' (a, b) = (a, B.toLazyText b)
+
 run :: CodeBuilder a -> L.Text
-run = B.toLazyText . snd . runBuilder package ["fruits"] ()
+run = snd . runBuilder
 
 shouldBeCompiled :: CodeBuilder a -> [L.Text] -> Expectation
 a `shouldBeCompiled` b = run a `shouldBe` L.unlines b
@@ -78,6 +86,7 @@ typeScriptTargetSpec = describe "TypeScript target" $ do
             let m = compilePackage package
             M.keysSet m `shouldBe` [ "package.json"
                                    , "tsconfig.json"
+                                   , "src" </> "__rt.ts"
                                    , "src" </> "fruits.ts"
                                    , "src" </> "imported_commons.ts"
                                    , "src" </> "transports" </> "truck.ts"
@@ -89,6 +98,20 @@ typeScriptTargetSpec = describe "TypeScript target" $ do
 
 compilationSpec :: Spec
 compilationSpec = do
+    specify "insertLocalImport" $ do
+        let b = do C.insertLocalImport ["transports", "truck"] ["Truck"]
+                   ST.get
+        let C.Context { C.localImports = imports } = fst $ runBuilder b
+        imports `shouldBe` [(["transports", "truck"], ["Truck"])]
+    specify "insertLocalImport 2" $ do
+        let b = do C.insertLocalImport ["transports", "truck"] ["Truck"]
+                   C.insertLocalImport ["fruits"] ["Apple", "Banana", "Cherry"]
+                   C.insertLocalImport ["transports", "truck"] ["PickupTruck"]
+                   ST.get
+        let C.Context { C.localImports } = fst $ runBuilder b
+        localImports `shouldBe` [ (["transports", "truck"], ["Truck", "PickupTruck"])
+                                , (["fruits"], ["Apple", "Banana", "Cherry"])
+                                ]
     compileRecordConstructorSpec
     compileRecordDeserializeSpec
     compileRecordSerializeSpec
@@ -135,10 +158,10 @@ compileRecordDeserializeSpec = describe "compileRecordDeserializeSpec" $
     specify "empty record" $
         compileRecordDeserialize "empty" [] `shouldBeCompiled`
             [ "static deserialize(value: any): Empty {"
-            , "    if (typeof value !== \"object\") {"
+            , "    if (typeof value !== 'object') {"
             , "        throw new DeserializeError();"
             , "    }"
-            , "    if (value._type !== \"empty\") {"
+            , "    if (value._type !== 'empty') {"
             , "        throw new DeserializeError();"  -- warning?
             , "    }"
             , "    return new Empty();"
