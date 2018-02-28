@@ -79,9 +79,6 @@ compileRecordDeserialize name fields = staticMethodDefinition "deserialize" (Jus
     compileRecordTypeCheck :: (Target t) => Field -> CodeBuilder t ()
     compileRecordTypeCheck field = do
         -- ty <- lookupType $ fieldType field
-        writeLine $ "if" <+> P.parens (P.char '!' <> values_ field) <+> P.lbrace
-        nest 4 $ writeLine $ "errors.push" <> P.parens P.empty <> P.semi
-        writeLine P.rbrace
         writeLine $ "const" <+> toFieldName field <> P.colon <+> toDoc TSAny <+> P.equals <+> values_ field <> P.semi
 
 compileRecordSerialize :: (Target t) => N.Name -> DS.DeclarationSet Field -> CodeBuilder t ()

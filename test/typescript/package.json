@@ -1,12 +1,16 @@
 {
     "name": "nirum-test-typescript",
     "private": true,
+    "scripts": {
+        "pretest": "stack exec nirum -- --target=typescript -o nirum_fixture ../nirum_fixture && tsc --outDir built/nirum_fixture --project nirum_fixture",
+        "test": "tsc && mocha ./built/**/*_test.js"
+    },
     "devDependencies": {
-        "@types/tape": "^4.2.30",
+        "@types/chai": "^4.0.4",
+        "@types/mocha": "^2.2.43",
+        "chai": "^4.1.2",
+        "mocha": "^4.0.1",
         "typescript": "^2.4.2"
     },
-    "dependencies": {
-        "tape": "^4.8.0",
-        "tape-async": "^2.3.0"
-    }
+    "dependencies": {}
 }

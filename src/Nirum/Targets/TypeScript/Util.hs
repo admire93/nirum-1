@@ -6,11 +6,15 @@ module Nirum.Targets.TypeScript.Util ( FunctionParameter ( .. )
                                      , eq
                                      , functionDefinition'
                                      , if'
+                                     , importRawStatement
+                                     , importRuntimeStatement
+                                     , importStatement
                                      , keywords
                                      , list
                                      , methodDefinition
                                      , ne
                                      , param
+                                     , relativePath
                                      , return'
                                      , staticMethodDefinition
                                      , thisDot
@@ -22,17 +26,20 @@ module Nirum.Targets.TypeScript.Util ( FunctionParameter ( .. )
                                      ) where
 import qualified Data.Set as S
 import qualified Data.Text as T
+import GHC.Exts (IsList (toList))
 import qualified Text.PrettyPrint as P
 import Text.PrettyPrint (Doc, (<>), (<+>))
 
 import qualified Nirum.CodeBuilder as CB
-import Nirum.CodeBuilder (nest, writeLine)
+import Nirum.CodeBuilder (modulePath, nest, writeLine)
 import qualified Nirum.Constructs.Name as N
 import Nirum.Constructs.Identifier ( Identifier
                                    , toCamelCaseText
                                    , toPascalCaseText
                                    , toSnakeCaseText
                                    )
+import Nirum.Constructs.ModulePath ( ModulePath (..) )
+import qualified Nirum.Constructs.ModulePath as MP
 import Nirum.Constructs.TypeDeclaration ( Field (..) )
 import Nirum.Package.Metadata ( Target )
 import Nirum.Targets.TypeScript.Context ( CodeBuilder )
@@ -167,3 +174,39 @@ keywords = [ "break", "do", "instanceof", "typeof", "case", "else", "new"
            -- Future reserved words
            , "class", "enum", "extends", "super", "const", "export", "import"
            ]
+
+relativePath :: ModulePath
+             -> ModulePath
+             -> Doc
+relativePath ModuleName { }          target = rel' 0 [] (toList target)
+relativePath ModulePath { path = p } target = rel' 0 (toList p) (toList target)
+
+rel' :: Int -> [Identifier] -> [Identifier] -> Doc
+rel' _ _ [] = error "invalid"
+rel' depth [] t = toRelPrefix depth <> "/" <> toPath t
+rel' depth (a:as) (b:bs)
+    | a == b && bs /= [] = rel' depth as bs
+    | otherwise          = rel' (depth + 1 + length as) [] (b:bs)
+toRelPrefix :: (Num t, Eq t) => t -> Doc
+toRelPrefix 0 = "."
+toRelPrefix 1 = ".."
+toRelPrefix n = "../" <> toRelPrefix (n - 1)
+toPath :: [Identifier] -> Doc
+toPath = P.hcat . P.punctuate "/" . map (toDoc . toSnakeCaseText)
+
+importRuntimeStatement :: Target t => [Doc] -> CodeBuilder t ()
+importRuntimeStatement names = do
+    base <- modulePath
+    let p = (toRelPrefix $ MP.length base - 1) <> "/__rt"
+    importRawStatement names p
+
+importStatement :: Target t => [Doc] -> ModulePath -> CodeBuilder t ()
+importStatement names path = do
+    base <- modulePath
+    let p = relativePath base path
+    importRawStatement names p
+
+importRawStatement :: Target t => [Doc] -> Doc -> CodeBuilder t ()
+importRawStatement names path = do
+    let items = P.braces $ P.hsep $ P.punctuate P.comma names
+    writeLine $ "import" <+> items <+> "from" <+> P.quotes path <> P.semi

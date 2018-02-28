@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE BangPatterns, NamedFieldPuns, TypeFamilies #-}
 module Nirum.Constructs.ModulePath ( ModulePath ( ModuleName
                                                 , ModulePath
                                                 , moduleName
@@ -6,12 +6,16 @@ module Nirum.Constructs.ModulePath ( ModulePath ( ModuleName
                                                 )
                                    , fromFilePath
                                    , fromIdentifiers
+                                   , length
                                    , hierarchy
                                    , hierarchies
                                    , replacePrefix
                                    ) where
 
+import Prelude hiding (length)
+
 import Data.Char (toLower)
+import qualified Data.Foldable as F
 import Data.Maybe (fromMaybe, mapMaybe)
 import GHC.Exts (IsList (Item, fromList, toList))
 
@@ -44,7 +48,7 @@ fromIdentifiers identifiers = fmap (`ModulePath` last identifiers) init'
 
 fromFilePath :: FilePath -> Maybe ModulePath
 fromFilePath filePath =
-    if length fileIdentifiers == length paths
+    if F.length fileIdentifiers == F.length paths
     then fromIdentifiers fileIdentifiers
     else Nothing
   where
@@ -63,6 +67,12 @@ hierarchy m@(ModulePath parent _) = m `S.insert` hierarchy parent
 
 hierarchies :: S.Set ModulePath -> S.Set ModulePath
 hierarchies modulePaths = S.unions $ toList $ S.map hierarchy modulePaths
+
+length :: ModulePath -> Int
+length a = length' 1 a
+  where
+    length' !n ModuleName { } = n
+    length' !n ModulePath { path } = length' (n + 1) path
 
 replacePrefix :: ModulePath -> ModulePath -> ModulePath -> ModulePath
 replacePrefix from to path'

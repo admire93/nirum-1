@@ -19,6 +19,7 @@ import Nirum.CodeBuilder (writeLine)
 -- import Nirum.Constructs.Annotation as AS (empty)
 import qualified Nirum.Constructs.DeclarationSet as DS
 import Nirum.Constructs.Module (Module (..))
+import Nirum.Constructs.ModulePath (ModulePath)
 -- import Nirum.Constructs.TypeDeclaration (Field (..))
 import Nirum.Package.Metadata ( Metadata (..)
                               , MetadataError ( FieldError )
@@ -29,7 +30,7 @@ import qualified Nirum.Package.ModuleSet as MS
 import Nirum.Targets.TypeScript
 import qualified Nirum.Targets.TypeScript.Context as C
 import Nirum.Targets.TypeScript.Record
-import Nirum.Targets.TypeScript.Util
+import Nirum.Targets.TypeScript.Util hiding ( keywords )
 
 
 emptyModule :: Module
@@ -51,6 +52,9 @@ modules' = case m of
 
 package :: Package TypeScript
 package = Package { metadata = Metadata { version = SV.version 0 0 1 [] []
+                                        , description = Nothing
+                                        , license = Nothing
+                                        , keywords = []
                                         , authors = []
                                         , target = ts
                                         }
@@ -73,6 +77,7 @@ spec :: Spec
 spec = do
     typeScriptTargetSpec
     compilationSpec
+    relativePathSpec
 
 typeScriptTargetSpec :: Spec
 typeScriptTargetSpec = describe "TypeScript target" $ do
@@ -174,3 +179,34 @@ compileRecordSpec = describe "compileRecord" $
         let compiled = L.lines $ run $ compileRecord "empty" []
         head compiled `shouldBe` "export class Empty {"
         last compiled `shouldBe` "}"
+
+
+relativePathSpec :: Spec
+relativePathSpec = describe "relativePath" $ do
+    specify "case #1" $ do
+        let base = ["a"] :: ModulePath
+        let relativeTo = relativePath base
+        relativeTo ["b"] `shouldBe` "./b"
+        relativeTo ["a", "c"] `shouldBe` "./a/c"
+        relativeTo ["d", "e", "f"] `shouldBe` "./d/e/f"
+    specify "case #2" $ do
+        let base = ["a", "b"] :: ModulePath
+        let relativeTo = relativePath base
+        relativeTo ["a"] `shouldBe` "../a"
+        relativeTo ["b"] `shouldBe` "../b"
+        relativeTo ["a", "c"] `shouldBe` "./c"
+        relativeTo ["b", "d"] `shouldBe` "../b/d"
+        relativeTo ["e", "f", "g"] `shouldBe` "../e/f/g"
+    specify "case #3" $ do
+        let base = ["a", "b", "c"] :: ModulePath
+        let relativeTo = relativePath base
+        relativeTo ["a", "b", "d"] `shouldBe` "./d"
+        relativeTo ["a", "b"] `shouldBe` "../b"
+        relativeTo ["a"] `shouldBe` "../../a"
+        relativeTo ["a", "b", "c", "d"] `shouldBe` "./c/d"
+        relativeTo ["a", "e", "f"] `shouldBe` "../e/f"
+        relativeTo ["a", "e"] `shouldBe` "../e"
+        relativeTo ["g", "h", "i"] `shouldBe` "../../g/h/i"
+        relativeTo ["g", "h"] `shouldBe` "../../g/h"
+        relativeTo ["g"] `shouldBe` "../../g"
+        relativeTo ["g", "b", "c"] `shouldBe` "../../g/b/c"

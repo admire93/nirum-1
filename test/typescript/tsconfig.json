@@ -3,6 +3,14 @@
         "target": "es2015",
         "module": "commonjs",
         "strict": true,
-        "outDir": "built/"
-    }
+        "outDir": "built/",
+        "baseUrl": ".",
+        "paths": {
+            "./nirum_fixture": ["built/nirum_fixture"]
+        }
+    },
+    "exclude": [
+        "nirum_fixture",
+        "node_modules"
+    ]
 }

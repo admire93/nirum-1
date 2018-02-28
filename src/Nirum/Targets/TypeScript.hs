@@ -18,7 +18,7 @@ import Data.Text.Lazy.Encoding (encodeUtf8)
 import GHC.Exts (IsList (toList))
 import System.FilePath (joinPath, (</>))
 import qualified Text.PrettyPrint as P
-import Text.PrettyPrint ( (<>) )
+import Text.PrettyPrint ((<>))
 
 import Nirum.CodeBuilder (runBuilder, writeLine)
 import qualified Nirum.Constructs.Declaration as D
@@ -47,6 +47,7 @@ import qualified Nirum.Package.ModuleSet as MS
 import qualified Nirum.Targets.TypeScript.Context as C
 import Nirum.Targets.TypeScript.Record ( compileRecord )
 import Nirum.Targets.TypeScript.Runtime ( runtimeModuleContent )
+import Nirum.Targets.TypeScript.Util ( importRuntimeStatement )
 
 
 newtype TypeScript = TypeScript { packageName :: T.Text }
@@ -114,8 +115,12 @@ compilePackageMetadata = Code . (`mappend` LB.singleton '\n') . encodePrettyToTe
 compileBuildConfiguration :: Package TypeScript -> Code
 compileBuildConfiguration _package = Code $ (`mappend` LB.singleton '\n') $ encodePrettyToTextBuilder content
   where
-    content = object [ "compilerOptions" .= object []
-                     ]
+    content = object [ "compilerOptions" .= compilerOptions ]
+    compilerOptions = object [ "strict" .= True
+                             , "target" .= ( "es2015" :: T.Text )
+                             , "module" .= ( "commonjs" :: T.Text )
+                             , "declaration" .= True
+                             ]
 
 runtimeModule :: Code
 runtimeModule = Code runtimeModuleContent
@@ -123,6 +128,7 @@ runtimeModule = Code runtimeModuleContent
 compileModule :: (Target t) => Module -> C.CodeBuilder t ()
 compileModule Module {..} = do
     writeLine $ P.doubleQuotes "use strict" <> P.semi
+    importRuntimeStatement ["DeserializeError"]
     mapM_ compileTypeDecl $ DS.toList types
   where
     compileTypeDecl tds = writeLine "" >> compileTypeDeclaration tds

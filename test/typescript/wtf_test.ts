@@ -1,5 +1,6 @@
-import tape = require('tape-async');
+import { expect } from 'chai';
 
+import { Point1 } from './nirum_fixture/fixture/foo';
 
 class K {
     __nirum_serialize__(): any {
@@ -10,10 +11,11 @@ class K {
     }
 }
 
-
-tape('basic interfaces', async t => {
-    const value = K.__nirum_deserialize__({});
-    t.assert(value instanceof K);
-    const serialized = value.__nirum_serialize__();
-    t.deepEquals(serialized, {});
+describe('basic interfaces', function () {
+    specify('', function () {
+        const value = K.__nirum_deserialize__({});
+        expect(value).instanceof(K);
+        const serialized = value.__nirum_serialize__();
+        expect(serialized).deep.eq({});
+    });
 });

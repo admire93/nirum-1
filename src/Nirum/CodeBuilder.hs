@@ -9,6 +9,7 @@ module Nirum.CodeBuilder (
     writeLine,
     nest,
     lookupType,
+    modulePath,
     -- * Examples
     -- $examples
     ) where
@@ -26,6 +27,8 @@ import Text.PrettyPrint (($+$))
 
 import Nirum.Constructs.Identifier (Identifier)
 import Nirum.Constructs.ModulePath (ModulePath)
+import qualified Nirum.Package as PK
+import Nirum.Package (BoundModule, resolveBoundModule)
 import Nirum.Package.Metadata (Package (..), Target (..))
 import qualified Nirum.TypeInstance.BoundModule as BoundModule
 
@@ -95,6 +98,10 @@ lookupType :: Target t
 lookupType identifier = do
     m <- fmap boundModule get'
     return $ BoundModule.lookupType identifier m
+
+modulePath :: Target t
+           => CodeBuilder t s ModulePath
+modulePath = fmap (PK.modulePath . boundModule) get'
 
 -- | Execute the builder computation and retrive output.
 runBuilder :: Target t
