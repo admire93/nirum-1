@@ -45,9 +45,9 @@ import Nirum.Package.Metadata ( Metadata (..)
                               )
 import qualified Nirum.Package.ModuleSet as MS
 import qualified Nirum.Targets.TypeScript.Context as C
-import Nirum.Targets.TypeScript.Record ( compileRecord )
-import Nirum.Targets.TypeScript.Runtime ( runtimeModuleContent )
-import Nirum.Targets.TypeScript.Util ( importRuntimeStatement )
+import Nirum.Targets.TypeScript.Record
+import Nirum.Targets.TypeScript.Runtime
+import Nirum.Targets.TypeScript.Util
 
 
 newtype TypeScript = TypeScript { packageName :: T.Text }
@@ -59,12 +59,12 @@ data CompileError' = CompileError'
 type CodeBuilder = C.CodeBuilder TypeScript
 
 instance ToJSON (Package TypeScript) where
-    toJSON package = object [ "name" .= packageName
-                            , "version" .= SV.toText version
+    toJSON package = object [ "name" .= p
+                            , "version" .= SV.toText v
                             ]
       where
-        Metadata {..} = metadata package
-        TypeScript {..} = packageTarget package
+        Metadata { version = v } = metadata package
+        TypeScript { packageName = p } = packageTarget package
 
 instance Target TypeScript where
     type CompileResult TypeScript = Code
@@ -78,7 +78,8 @@ instance Target TypeScript where
     toByteString _ = BSL.toStrict . encodeUtf8 . toLazyText . builder
 
 
-compilePackage' :: Package TypeScript -> Map FilePath (Either CompileError' Code)
+compilePackage' :: Package TypeScript
+                -> Map FilePath (Either CompileError' Code)
 compilePackage' package =
     M.fromList $
         files ++
@@ -107,13 +108,16 @@ compilePackage' package =
             | (mp, m) <- MS.toList (modules package)
             ]
     compile :: (ModulePath, Module) -> Either CompileError' Code
-    compile (mp, m) = Right $ Code $ snd $ runBuilder package mp C.empty (compileModule m)
+    compile (mp, m) =
+        Right $ Code $ snd $ runBuilder package mp C.empty (compileModule m)
 
 compilePackageMetadata :: Package TypeScript -> Code
-compilePackageMetadata = Code . (`mappend` LB.singleton '\n') . encodePrettyToTextBuilder
+compilePackageMetadata =
+    Code . (`mappend` LB.singleton '\n') . encodePrettyToTextBuilder
 
 compileBuildConfiguration :: Package TypeScript -> Code
-compileBuildConfiguration _package = Code $ (`mappend` LB.singleton '\n') $ encodePrettyToTextBuilder content
+compileBuildConfiguration _package =
+    Code $ (`mappend` LB.singleton '\n') $ encodePrettyToTextBuilder content
   where
     content = object [ "compilerOptions" .= compilerOptions ]
     compilerOptions = object [ "strict" .= True
@@ -134,5 +138,6 @@ compileModule Module {..} = do
     compileTypeDecl tds = writeLine "" >> compileTypeDeclaration tds
 
 compileTypeDeclaration :: (Target t) => TypeDeclaration -> C.CodeBuilder t ()
-compileTypeDeclaration td@TypeDeclaration { type' = RecordType fields } = compileRecord (D.name td) fields
+compileTypeDeclaration td@TypeDeclaration { type' = RecordType fields } =
+    compileRecord (D.name td) fields
 compileTypeDeclaration _ = return ()
