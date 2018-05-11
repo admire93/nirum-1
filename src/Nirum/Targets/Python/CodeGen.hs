@@ -1,19 +1,27 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 module Nirum.Targets.Python.CodeGen
     ( Code
     , CodeGen
     , CodeGenContext (..)
     , CompileError
+    , InstallRequires (..)
     , Python (..)
     , PythonVersion (..)
     , RenameMap
+    , addDependency
+    , addOptionalDependency
+    , baseIntegerClass
+    , baseStringClass
+    , collectionsAbc
     , empty
     , getPythonVersion
     , importBuiltins
     , importStandardLibrary
     , importTypingForPython3
+    , indent
     , insertLocalImport
     , insertStandardImport
     , insertStandardImportA
@@ -26,23 +34,35 @@ module Nirum.Targets.Python.CodeGen
     , renameModulePath
     , renameModulePath'
     , runCodeGen
+    , stringLiteral
     , toAttributeName
     , toAttributeName'
+    , toBehindSnakeCaseText
     , toClassName
     , toClassName'
     , toImportPath'
     , toImportPath
     , toImportPaths
+    , unionInstallRequires
     ) where
 
 import Control.Monad.State
+import Data.Maybe
 import Data.Typeable
 import GHC.Exts
 
 import Data.Map.Strict hiding (empty, member, toAscList)
 import Data.SemVer hiding (Identifier)
 import Data.Set hiding (empty)
+import qualified Data.Set
 import Data.Text hiding (empty)
+import qualified Data.Text
+import Data.Text.Lazy (toStrict)
+import qualified Data.Text.Lazy
+import Text.Blaze (ToMarkup (preEscapedToMarkup))
+import Text.Blaze.Renderer.Text (renderMarkup)
+import Text.InterpolatedString.Perl6 (qq)
+import Text.Printf (printf)
 
 import qualified Nirum.CodeGen
 import Nirum.Constructs.Identifier
@@ -83,6 +103,7 @@ data CodeGenContext
                      , thirdPartyImports :: Map Text (Map Text Text)
                      , localImports :: Map Text (Set Text)
                      , pythonVersion :: PythonVersion
+                     , installRequires :: InstallRequires
                      }
     deriving (Eq, Ord, Show)
 
@@ -96,6 +117,7 @@ empty pythonVer = CodeGenContext
     , thirdPartyImports = []
     , localImports = []
     , pythonVersion = pythonVer
+    , installRequires = InstallRequires [] []
     }
 
 localImportsMap :: CodeGenContext -> Map Text (Map Text Text)
@@ -173,6 +195,36 @@ importTypingForPython3 = do
         Python2 -> return ()
         Python3 -> insertStandardImport "typing"
 
+data InstallRequires =
+    InstallRequires { dependencies :: Set Text
+                    , optionalDependencies :: Map (Int, Int) (Set Text)
+                    } deriving (Eq, Ord, Show)
+
+addDependency :: InstallRequires -> Text -> InstallRequires
+addDependency requires package =
+    requires { dependencies = Data.Set.insert package $ dependencies requires }
+
+addOptionalDependency :: InstallRequires
+                      -> (Int, Int)       -- ^ Python version already stasified
+                      -> Text           -- ^ PyPI package name
+                      -> InstallRequires
+addOptionalDependency requires pyVer package =
+    requires { optionalDependencies = newOptDeps }
+  where
+    oldOptDeps :: Map (Int, Int) (Set Text)
+    oldOptDeps = optionalDependencies requires
+    newOptDeps :: Map (Int, Int) (Set Text)
+    newOptDeps = Data.Map.Strict.alter
+        (Just . Data.Set.insert package . fromMaybe Data.Set.empty)
+        pyVer oldOptDeps
+
+unionInstallRequires :: InstallRequires -> InstallRequires -> InstallRequires
+unionInstallRequires a b =
+    a { dependencies = Data.Set.union (dependencies a) (dependencies b)
+      , optionalDependencies = Data.Map.Strict.unionWith
+            Data.Set.union (optionalDependencies a) (optionalDependencies b)
+      }
+
 getPythonVersion :: CodeGen PythonVersion
 getPythonVersion = fmap pythonVersion Control.Monad.State.get
 
@@ -225,6 +277,9 @@ toAttributeName identifier =
 toAttributeName' :: Name -> Text
 toAttributeName' = toAttributeName . facialName
 
+toBehindSnakeCaseText :: Name -> Text
+toBehindSnakeCaseText = toSnakeCaseText . behindName
+
 mangleVar :: Code -> Text -> Code
 mangleVar expr arbitrarySideName = Data.Text.concat
     [ "__nirum_"
@@ -236,3 +291,62 @@ mangleVar expr arbitrarySideName = Data.Text.concat
     , arbitrarySideName
     , "__"
     ]
+
+collectionsAbc :: CodeGen Code
+collectionsAbc = do
+    ver <- getPythonVersion
+    importStandardLibrary $ case ver of
+        Python2 -> "collections"
+        Python3 -> "collections.abc"
+
+-- | Indent the given code.  If there are empty lines these are not indented.
+indent :: ToMarkup m => Code -> m -> Code
+indent space =
+    intercalate "\n"
+        . fmap indentLn
+        . Data.Text.Lazy.split (== '\n')
+        . renderMarkup
+        . preEscapedToMarkup
+  where
+    indentLn :: Data.Text.Lazy.Text -> Code
+    indentLn line
+      | Data.Text.Lazy.null line = Data.Text.empty
+      | otherwise = space `append` toStrict line
+
+stringLiteral :: Text -> Code
+stringLiteral string =
+    open $ Data.Text.concatMap esc string `snoc` '"'
+  where
+    open :: Text -> Text
+    open =
+        if Data.Text.any (> '\xff') string
+        then Data.Text.append "u\""
+        else Data.Text.cons '"'
+    esc :: Char -> Text
+    esc '"' = "\\\""
+    esc '\\' = "\\\\"
+    esc '\t' = "\\t"
+    esc '\n' = "\\n"
+    esc '\r' = "\\r"
+    esc c
+        | c >= '\x10000' = pack $ printf "\\U%08x" c
+        | c >= '\xff' = pack $ printf "\\u%04x" c
+        | c < ' ' || c >= '\x7f' = pack $ printf "\\x%02x" c
+        | otherwise = Data.Text.singleton c
+
+baseStringClass :: CodeGen Code
+baseStringClass = do
+    builtinsMod <- importBuiltins
+    pyVer <- getPythonVersion
+    let className = case pyVer of
+            Python2 -> "basestring" :: Code
+            Python3 -> "str"
+    return [qq|$builtinsMod.$className|]
+
+baseIntegerClass :: CodeGen Code
+baseIntegerClass = do
+    builtinsMod <- importBuiltins
+    pyVer <- getPythonVersion
+    return $ case pyVer of
+        Python2 -> [qq|($builtinsMod.int, $builtinsMod.long)|]
+        Python3 -> [qq|$builtinsMod.int|]

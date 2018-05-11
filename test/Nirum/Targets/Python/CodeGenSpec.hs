@@ -14,7 +14,7 @@ import Data.Maybe
 import Data.SemVer hiding (Identifier, metadata)
 import Test.Hspec.Meta
 import Text.Email.Validate (emailAddress)
-import Text.InterpolatedString.Perl6 (qq)
+import Text.InterpolatedString.Perl6 (q, qq)
 
 import Nirum.Constructs.Annotation (empty)
 import Nirum.Constructs.Identifier
@@ -202,10 +202,83 @@ spec' = pythonVersionSpecs $ \ ver -> do
             thirdPartyImports ctx2 `shouldBe` []
             localImports ctx2 `shouldBe` []
             compileError codeGen2 `shouldBe` Nothing
+        specify "collectionsAbc" $ do
+            let expected@(expectedModule, _) = case ver of
+                    Python2 -> ("_collections", "collections")
+                    Python3 -> ("_collections_abc", "collections.abc")
+            let (abc, ctx) = runCodeGen collectionsAbc empty'
+            abc `shouldBe` Right expectedModule
+            standardImports ctx `shouldBe` [expected]
+        specify "baseStringClass" $ do
+            let (baseString, ctx) = runCodeGen baseStringClass empty'
+            case ver of
+                Python2 -> do
+                    baseString `shouldBe` Right "__builtin__.basestring"
+                    standardImports ctx `shouldBe`
+                        [("__builtin__", "__builtin__")]
+                Python3 -> do
+                    baseString `shouldBe` Right "__builtin__.str"
+                    standardImports ctx `shouldBe` [("__builtin__", "builtins")]
+        specify "baseIntegerClass" $ do
+            let (baseString, ctx) = runCodeGen baseIntegerClass empty'
+            case ver of
+                Python2 -> do
+                    baseString `shouldBe`
+                        Right "(__builtin__.int, __builtin__.long)"
+                    standardImports ctx `shouldBe`
+                        [("__builtin__", "__builtin__")]
+                Python3 -> do
+                    baseString `shouldBe` Right "__builtin__.int"
+                    standardImports ctx `shouldBe` [("__builtin__", "builtins")]
+
 
 spec :: Spec
 spec = do
     spec'
+
+    describe "InstallRequires" $ do
+        let req = InstallRequires [] []
+            req2 = req { dependencies = ["six"] }
+            req3 = req { optionalDependencies = [((3, 4), ["enum34"])] }
+        specify "addDependency" $ do
+            addDependency req "six" `shouldBe` req2
+            addDependency req2 "six" `shouldBe` req2
+            addDependency req "nirum" `shouldBe`
+                req { dependencies = ["nirum"] }
+            addDependency req2 "nirum" `shouldBe`
+                req2 { dependencies = ["nirum", "six"] }
+        specify "addOptionalDependency" $ do
+            addOptionalDependency req (3, 4) "enum34" `shouldBe` req3
+            addOptionalDependency req3 (3, 4) "enum34" `shouldBe` req3
+            addOptionalDependency req (3, 4) "ipaddress" `shouldBe`
+                req { optionalDependencies = [((3, 4), ["ipaddress"])] }
+            addOptionalDependency req3 (3, 4) "ipaddress" `shouldBe`
+                req { optionalDependencies = [ ((3, 4), ["enum34", "ipaddress"])
+                                             ]
+                    }
+            addOptionalDependency req (3, 5) "typing" `shouldBe`
+                req { optionalDependencies = [((3, 5), ["typing"])] }
+            addOptionalDependency req3 (3, 5) "typing" `shouldBe`
+                req3 { optionalDependencies = [ ((3, 4), ["enum34"])
+                                              , ((3, 5), ["typing"])
+                                              ]
+                     }
+        specify "unionInstallRequires" $ do
+            (req `unionInstallRequires` req) `shouldBe` req
+            (req `unionInstallRequires` req2) `shouldBe` req2
+            (req2 `unionInstallRequires` req) `shouldBe` req2
+            (req `unionInstallRequires` req3) `shouldBe` req3
+            (req3 `unionInstallRequires` req) `shouldBe` req3
+            let req4 = req3 { dependencies = ["six"] }
+            (req2 `unionInstallRequires` req3) `shouldBe` req4
+            (req3 `unionInstallRequires` req2) `shouldBe` req4
+            let req5 = req { dependencies = ["nirum"]
+                           , optionalDependencies = [((3, 4), ["ipaddress"])]
+                           }
+                req6 = addOptionalDependency (addDependency req4 "nirum")
+                                             (3, 4) "ipaddress"
+            (req4 `unionInstallRequires` req5) `shouldBe` req6
+            (req5 `unionInstallRequires` req4) `shouldBe` req6
 
     describe "toClassName" $ do
         it "transform the facial name of the argument into PascalCase" $ do
@@ -264,3 +337,18 @@ spec = do
         renameModulePath renames ["baz"] `shouldBe` ["p", "az"]
         renameModulePath renames ["baz", "qux"] `shouldBe` ["p", "az", "qux"]
         renameModulePath renames ["qux", "foo"] `shouldBe` ["qux", "foo"]
+
+    specify "indent" $ do
+        indent "    " ("a\n    b\n\nc\n" :: Code) `shouldBe`
+            "    a\n        b\n\n    c\n"
+        indent "    " ("\"\"\"foo\nbar\n\"\"\"" :: Code) `shouldBe`
+            "    \"\"\"foo\n    bar\n    \"\"\""
+
+    specify "stringLiteral" $ do
+        stringLiteral "asdf" `shouldBe` [q|"asdf"|]
+        stringLiteral [q|Say 'hello world'|]
+            `shouldBe` [q|"Say 'hello world'"|]
+        stringLiteral [q|Say "hello world"|]
+            `shouldBe` [q|"Say \"hello world\""|]
+        stringLiteral "Say '\xc548\xb155'"
+            `shouldBe` [q|u"Say '\uc548\ub155'"|]

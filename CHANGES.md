@@ -158,6 +158,9 @@ To be released.
     (``tzinfo``) awareness check for `datetime`, and basic format check for
     `uri`.
 
+ -  Removed `__nirum_get_inner_type__()` class methods from generated unboxed
+    type classes.
+
  -  Fixed a bug that generated service methods hadn't checked its arguments
     before its transport sends a payload.  [[#220]]
 
