@@ -66,7 +66,10 @@ def test_serializer_deserializer(spec_file):
         print('Normal:', dump_json(spec['normal']))
         serialized = deserialized.__nirum_serialize__()
         print('Serialized:', dump_json(serialized))
-        assert serialized == spec['normal']
+        if 'set' in spec and spec['set']:
+            assert set(serialized) == set(spec['normal'])
+        else:
+            assert serialized == spec['normal']
     else:
         print('Expected errors:', dump_json(spec['errors']))
         actual_errors = set()
